@@ -52,7 +52,7 @@ body {
   color: var(--ink);
 }
 
-button, input { font: inherit; color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: progress; opacity: 0.7; }
 
@@ -409,7 +409,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 .tabbar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--panel);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
@@ -424,7 +424,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 .tab[aria-current='page'] {
@@ -475,6 +475,53 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   gap: 10px;
 }
 .grabber { width: 44px; height: 5px; border-radius: 99px; background: var(--line); margin: 4px auto 6px; }
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pair .btn { min-height: 48px; }
+.pair:has(.btn:only-child) { grid-template-columns: 1fr; }
+.field.area { min-height: 96px; resize: vertical; }
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.chip { display: inline-flex; align-items: center; }
+.coverage-map {
+  height: 300px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  position: relative;
+  z-index: 0;
+  background: var(--bg-2);
+}
+.coverage-map .leaflet-container {
+  height: 100%;
+  width: 100%;
+  font: inherit;
+  background: var(--bg-2);
+}
+.coverage-map.placing .leaflet-container { cursor: crosshair; }
+.coverage-map .leaflet-control-attribution {
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 78%;
+}
+.past {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 8px 12px 12px;
+}
+.past summary {
+  min-height: 44px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.past[open] summary { margin-bottom: 8px; }
 
 .crash {
   min-height: 100dvh;

@@ -1,5 +1,14 @@
+import type { ClubEvent, MemberRole } from '../types.ts'
+
 const PHONE = /(?:\+?\d[\d\s()-]{8,}\d)/g
 const POSTCODE = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi
+
+/**
+ * Personal UK amateur callsigns:
+ * classic G/GM/GW/GI/GD/GJ/GU, current M-series full and foundation, and intermediate 2x0/2x1.
+ */
+const UK_CALLSIGN =
+  /^(?:(?:G|GM|GW|GI|GD|GJ|GU)[0-9][A-Z]{2,3}|(?:M|MM|MW|MI|MD|MJ|MU)[013567][A-Z]{3}|2[EWMIDUJ][01][A-Z]{3})$/
 
 export type LondonParts = {
   year: string
@@ -60,12 +69,35 @@ export function nextWednesdayEvening(now = new Date()): string {
   if (now.getTime() <= Date.parse('2026-11-25T21:00:00Z')) {
     return new Date('2026-11-25T19:00:00Z').toISOString()
   }
+  return nextWeekdayEvening(now, 3)
+}
+
+/** Next Monday at 7pm London, which is when the GB3YA net starts. */
+export function nextMondayEvening(now = new Date()): string {
+  return nextWeekdayEvening(now, 1)
+}
+
+function nextWeekdayEvening(now: Date, weekday: number): string {
   const today = londonParts(now)
-  let add = (3 - today.weekdayIndex + 7) % 7
+  let add = (weekday - today.weekdayIndex + 7) % 7
   if (add === 0 && today.hour >= 21) add = 7
   const [year, month, day] = today.isoDate.split('-').map(Number)
   const dest = new Date(Date.UTC(year, month - 1, day + add))
   return zonedTimeToIso(dest.toISOString().slice(0, 10), 19, 0)
+}
+
+/** Most recent weekday at 7pm that is already over (more than two hours ago). */
+export function lastWeekdayEvening(now: Date, weekday: number): string {
+  const today = londonParts(now)
+  const sub = (today.weekdayIndex - weekday + 7) % 7
+  const [year, month, day] = today.isoDate.split('-').map(Number)
+  const dest = new Date(Date.UTC(year, month - 1, day - sub))
+  const iso = zonedTimeToIso(dest.toISOString().slice(0, 10), 19, 0)
+  if (new Date(iso).getTime() >= now.getTime() - 2 * 60 * 60 * 1000) {
+    const earlier = new Date(Date.UTC(year, month - 1, day - sub - 7))
+    return zonedTimeToIso(earlier.toISOString().slice(0, 10), 19, 0)
+  }
+  return iso
 }
 
 export function publicText(value: string | null | undefined): string | null {
@@ -102,6 +134,38 @@ export function prepareCallsign(
     }
   }
   return { ok: true, callsign: compact }
+}
+
+/** A member's own callsign. Stricter than a net check-in, which may include a visitor. */
+export function prepareUkCallsign(
+  input: string,
+): { ok: true; callsign: string } | { ok: false; message: string } {
+  const compact = input.trim().toUpperCase().replace(/\s+/g, '')
+  if (!compact) return { ok: false, message: 'Enter a callsign.' }
+  if (compact.includes('/')) {
+    return { ok: false, message: 'Leave off /P or /M. Just the callsign itself.' }
+  }
+  if (!UK_CALLSIGN.test(compact)) {
+    return { ok: false, message: 'Enter a UK callsign, such as MW0CAD or M7ABC.' }
+  }
+  return { ok: true, callsign: compact }
+}
+
+/** About 100 metres. Member coverage spots are never stored more precisely than this. */
+export function roundCoord(value: number): number {
+  if (!Number.isFinite(value)) throw new Error('That spot is not a valid position.')
+  return Number(value.toFixed(3))
+}
+
+export function isCommitteeRole(role: string | null | undefined): boolean {
+  return role === 'committee' || role === 'admin'
+}
+
+export function roleLabel(role: MemberRole): string {
+  if (role === 'admin') return 'Admin'
+  if (role === 'committee') return 'Committee'
+  if (role === 'controller') return 'Net controller'
+  return 'Member'
 }
 
 export function isDisplayName(value: string): boolean {
@@ -235,10 +299,99 @@ export function sortRepeaters<T extends { callsign: string }>(rows: T[]): T[] {
   })
 }
 
+const DIARY_GRACE_MS = 2 * 60 * 60 * 1000
+
 export function upcomingEvents<T extends { date: string }>(events: T[], now: number): T[] {
   return [...events]
-    .filter((event) => new Date(event.date).getTime() >= now - 2 * 60 * 60 * 1000)
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .filter((event) => new Date(event.date).getTime() >= now - DIARY_GRACE_MS)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
+
+export function pastEvents<T extends { date: string }>(events: T[], now: number): T[] {
+  return [...events]
+    .filter((event) => new Date(event.date).getTime() < now - DIARY_GRACE_MS)
+    .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0))
+}
+
+export function londonDateAndTime(iso: string): { date: string; time: string } {
+  const parts = londonParts(new Date(iso))
+  return {
+    date: parts.isoDate,
+    time: `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`,
+  }
+}
+
+function icsStamp(iso: string): string {
+  const value = new Date(iso)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${value.getUTCFullYear()}${pad(value.getUTCMonth() + 1)}${pad(value.getUTCDate())}T${pad(value.getUTCHours())}${pad(value.getUTCMinutes())}${pad(value.getUTCSeconds())}Z`
+}
+
+function icsText(value: string): string {
+  return value
+    .replaceAll('–', '-')
+    .replaceAll('—', '-')
+    .replaceAll('\\', '\\\\')
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll(',', '\\,')
+    .replaceAll(';', '\\;')
+}
+
+function foldIcs(line: string): string {
+  const chars = [...line]
+  if (chars.length <= 73) return line
+  const parts = [chars.slice(0, 73).join('')]
+  for (let index = 73; index < chars.length; index += 72) {
+    parts.push(` ${chars.slice(index, index + 72).join('')}`)
+  }
+  return parts.join('\r\n')
+}
+
+/** Two-hour calendar entry. Location and description are scrubbed the same way as the screen. */
+export function eventIcs(event: ClubEvent, now = new Date()): string {
+  const start = new Date(event.date)
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
+  const summary = icsText(publicText(event.title) ?? 'CADARS')
+  const location = icsText(publicText(event.location) ?? '')
+  const description = icsText(publicText(event.description) ?? '')
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//CADARS Live//Club diary//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${event.id}@cadars-live`,
+    `DTSTAMP:${icsStamp(now.toISOString())}`,
+    `DTSTART:${icsStamp(start.toISOString())}`,
+    `DTEND:${icsStamp(end.toISOString())}`,
+    `SUMMARY:${summary}`,
+  ]
+  if (location) lines.push(`LOCATION:${location}`)
+  if (description) lines.push(`DESCRIPTION:${description}`)
+  lines.push('END:VEVENT', 'END:VCALENDAR')
+  return `${lines.map((line) => foldIcs(line)).join('\r\n')}\r\n`
+}
+
+export function eventFilename(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+  return `cadars-${slug || 'event'}.ics`
+}
+
+export function downloadIcs(event: ClubEvent): void {
+  const blob = new Blob([eventIcs(event)], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = eventFilename(event.title)
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 export function errorCode(error: unknown): string {
@@ -265,6 +418,12 @@ export function friendlyMessage(error: unknown): string {
     return 'That callsign is already registered. If it is yours, ask a committee member.'
   }
   if (code === '23505') return 'That callsign is already on the list.'
+  if (code === '23514' && blob.includes('callsign')) {
+    return 'Enter a UK callsign, such as MW0CAD or M7ABC.'
+  }
+  if (code === '42501' || blob.includes('row-level security') || blob.includes('permission denied')) {
+    return 'You do not have permission to change that yet.'
+  }
   if (blob.includes('rate limit') || blob.includes('over_email_send_rate_limit')) {
     return 'Please wait a minute, then ask for another code.'
   }

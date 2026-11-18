@@ -1,8 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { useScrollLock } from '../hooks.ts'
-import { friendlyMessage, isDisplayName, prepareCallsign, publicText } from '../lib/format.ts'
+import { friendlyMessage, isDisplayName, prepareUkCallsign, publicText } from '../lib/format.ts'
 import { sendEmailCode, verifyEmailCode } from '../lib/live.ts'
 import { ClubScreen } from '../screens/Club.tsx'
+import { MembersScreen } from '../screens/Members.tsx'
+
+const MapScreen = lazy(() => import('../screens/Map.tsx').then((mod) => ({ default: mod.MapScreen })))
 import { NetScreen } from '../screens/Net.tsx'
 import { OnAirScreen } from '../screens/OnAir.tsx'
 import { RepeatersScreen } from '../screens/Repeaters.tsx'
@@ -12,6 +15,7 @@ import type { Tab } from '../types.ts'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'air', label: 'On air' },
   { id: 'net', label: 'Net' },
+  { id: 'map', label: 'Map' },
   { id: 'repeaters', label: 'Repeaters' },
   { id: 'club', label: 'Club' },
 ]
@@ -71,8 +75,20 @@ export function Shell() {
       <main id="content" className="content">
         {app.tab === 'air' ? <OnAirScreen /> : null}
         {app.tab === 'net' ? <NetScreen /> : null}
+        {app.tab === 'map' ? (
+          <Suspense
+            fallback={
+              <div className="screen">
+                <div className="skeleton tall" />
+              </div>
+            }
+          >
+            <MapScreen />
+          </Suspense>
+        ) : null}
         {app.tab === 'repeaters' ? <RepeatersScreen /> : null}
         {app.tab === 'club' ? <ClubScreen /> : null}
+        {app.tab === 'members' ? <MembersScreen /> : null}
       </main>
       <nav className="tabbar" aria-label="Sections">
         {TABS.map((tab) => (
@@ -241,7 +257,7 @@ function ProfileSheet() {
 
   async function save(event: FormEvent) {
     event.preventDefault()
-    const parsed = prepareCallsign(callsign)
+    const parsed = prepareUkCallsign(callsign)
     if (!parsed.ok) {
       setError(parsed.message)
       return
@@ -273,7 +289,13 @@ function ProfileSheet() {
       <form className="sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" onSubmit={(event) => void save(event)}>
         <div className="grabber" aria-hidden="true" />
         <h2 id="profile-title">{member ? 'Edit your callsign' : 'Your callsign'}</h2>
-        <p>We need this once, before you can go on the air or check people in.</p>
+        <p>
+          {member
+            ? member.status === 'approved'
+              ? 'This is the callsign other members see.'
+              : 'You can correct your callsign. Posting stays closed until the committee approves you.'
+            : 'Enter your UK callsign. A committee member approves you before you can go on the air, check in to the net, or add a coverage report.'}
+        </p>
         <label className="field-label" htmlFor="my-call">
           Callsign
         </label>
@@ -311,8 +333,19 @@ function ProfileSheet() {
 function TabIcon({ id }: { id: Tab }) {
   if (id === 'air') return <AirIcon />
   if (id === 'net') return <NetIcon />
+  if (id === 'map') return <MapIcon />
   if (id === 'repeaters') return <TowerIcon />
+  if (id === 'members') return <PersonIcon />
   return <CalIcon />
+}
+
+function MapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10Z" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="11" r="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  )
 }
 
 function AirIcon() {

@@ -3,13 +3,20 @@ import { test } from 'node:test'
 import {
   attendanceTally,
   awardCallsigns,
+  eventIcs,
   formatFrequency,
+  lastWeekdayEvening,
   londonParts,
   memberFacingNote,
+  nextMondayEvening,
   nextWednesdayEvening,
+  pastEvents,
   prepareCallsign,
+  prepareUkCallsign,
   publicText,
+  roundCoord,
   timeLeft,
+  upcomingEvents,
   zonedTimeToIso,
 } from './format.ts'
 
@@ -25,6 +32,62 @@ test('hides the internal repeater warning and keeps a useful note', () => {
     memberFacingNote('Verify on ukrepeater.net before publishing. Likely a digital repeater (analogue + DMR).'),
     'Likely a digital repeater (analogue + DMR).',
   )
+})
+
+test('accepts UK amateur callsigns and rejects other formats', () => {
+  for (const call of ['M7ABC', 'M7TGM', 'MW7TGM', '2E0XYZ', '2W0QRS', 'MW6DEF', 'GW4XYZ', 'MW0CAD', 'G4AB', 'MM0ABC']) {
+    const parsed = prepareUkCallsign(call.toLowerCase())
+    assert.equal(parsed.ok, true)
+    if (parsed.ok) assert.equal(parsed.callsign, call)
+  }
+  assert.equal(prepareUkCallsign('MW6DEF/P').ok, false)
+  assert.equal(prepareUkCallsign('GB3YA').ok, false)
+  assert.equal(prepareUkCallsign('W1AW').ok, false)
+  assert.equal(prepareUkCallsign('hello').ok, false)
+})
+
+test('rounds a coverage spot to about 100 metres', () => {
+  assert.equal(roundCoord(51.63994), 51.64)
+  assert.equal(roundCoord(-3.0614), -3.061)
+  assert.equal(roundCoord(-3.0615), -3.062)
+})
+
+test('monday net and past club nights land on the right evenings', () => {
+  const late = new Date('2026-11-18T22:00:00Z')
+  assert.equal(nextMondayEvening(late), '2026-11-23T19:00:00.000Z')
+  assert.equal(lastWeekdayEvening(late, 1), '2026-11-16T19:00:00.000Z')
+  assert.equal(lastWeekdayEvening(late, 3), '2026-11-18T19:00:00.000Z')
+  assert.equal(lastWeekdayEvening(new Date('2026-11-18T18:00:00Z'), 3), '2026-11-11T19:00:00.000Z')
+})
+
+test('diary keeps tonight until two hours after the start, then files it as past', () => {
+  const events = [
+    { date: '2026-11-23T19:00:00.000Z', title: 'net' },
+    { date: '2026-11-18T19:00:00.000Z', title: 'club' },
+  ]
+  const now = Date.parse('2026-11-18T22:00:00Z')
+  assert.deepEqual(upcomingEvents(events, now).map((event) => event.title), ['net'])
+  assert.deepEqual(pastEvents(events, now).map((event) => event.title), ['club'])
+})
+
+test('calendar file is two hours and does not keep a postcode', () => {
+  const ics = eventIcs(
+    {
+      id: 'club-night',
+      title: 'CADARS club night',
+      date: '2026-11-25T19:00:00.000Z',
+      location: 'Henllys Village Hall, NP44 6JZ',
+      description: 'Weekly club night, 7–9pm.',
+      created_at: '2026-01-01T00:00:00.000Z',
+    },
+    new Date('2026-11-18T22:00:00Z'),
+  )
+  assert.match(ics, /DTSTART:20261125T190000Z/)
+  assert.match(ics, /DTEND:20261125T210000Z/)
+  assert.match(ics, /SUMMARY:CADARS club night/)
+  assert.match(ics, /LOCATION:Henllys Village Hall/)
+  assert.equal(/NP44/.test(ics), false)
+  assert.match(ics, /DESCRIPTION:Weekly club night\\, 7-9pm\./)
 })
 
 test('accepts the sample callsigns and rejects rubbish', () => {

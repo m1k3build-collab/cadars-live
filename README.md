@@ -1,6 +1,6 @@
 # CADARS Live
 
-A mobile-first web app for the Cwmbran & District Amateur Radio Society. Members can see who is on the air, and the net controller can check people in to the Monday evening GB3YA net.
+A mobile-first web app for the Cwmbran & District Amateur Radio Society. Members can see who is on the air, check in to the Monday evening GB3YA net, plot repeater coverage, and read the club diary.
 
 It is a static site. It talks to the club's existing Supabase project, and it can be hosted free on Cloudflare Pages or GitHub Pages. Anyone can read the lists. Signing in is only needed to put yourself on the air, open a net, or check a callsign in.
 
@@ -8,9 +8,15 @@ It is a static site. It talks to the club's existing Supabase project, and it ca
 
 ![Monday net check-in](docs/net-check-in.png)
 
+![Coverage map](docs/coverage-map.png)
+
+![Club diary](docs/club-diary.png)
+
+![New members waiting for approval](docs/member-approval.png)
+
 ## Try it at club night
 
-The bar under the wordmark is **Demo mode**. Turn it on and the phone fills with sample stations (GW4XYZ, MW6DEF, 2E0XYZ, M7ABC). You are `MW0CAD` for the sample. You can go on the air, clear yourself, open a net, and check callsigns in. Nothing is written to the club database, and it keeps working with no signal.
+The bar under the wordmark is **Demo mode**. Turn it on and the phone fills with sample stations (GW4XYZ, MW6DEF, 2E0XYZ, M7ABC). You are `MW0CAD` for the sample, acting as a committee member, so you can also drop a coverage report, edit the diary, and approve the sample members waiting on the list. Nothing is written to the club database, and the lists keep working with no signal. The map tiles still need a connection.
 
 Turn demo mode off, and on again, to restart the sample evening.
 
@@ -47,7 +53,9 @@ Once installed, the app shell and demo mode open with no connection. The live li
 
 ## Sign in
 
-Reading works with no account. To go on the air or run the net, a member enters their email and we send a code. They can type the code, or tap the link in the email on the same phone. The first time they sign in, the app asks for a callsign and what to call them, and saves their row in `members`.
+Reading works with no account. To post, a member enters their email and we send a code. They can type the code, or tap the link in the email on the same phone. The first time they sign in, the app asks for a UK callsign and what to call them. That row waits until a committee member approves it. Until then they can still read every list.
+
+Apply `supabase/migrations/20261118230000_map_diary_approval.sql` in the Supabase SQL editor before using the new screens against the live database. It is safe to run once. It does not need to be run again for a normal site deploy.
 
 Before the link will open the deployed site, add that site in Supabase:
 
@@ -85,13 +93,17 @@ The public site is [https://m1k3build-collab.github.io/cadars-live/](https://m1k
 
 `.github/workflows/pages.yml` builds the site and deploys it with GitHub Actions. In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The build command is `npm run build` and the published folder is `dist`. The build also copies `index.html` to `404.html`, which is how GitHub Pages serves the app on a refresh.
 
-## Editing repeaters and club nights
+## Editing the diary, repeaters, and members
 
-Repeaters and events are read-only in the app. Committee members change them in the Supabase table editor:
+Committee and admin members edit the diary in the app: add, change, or delete an event, and download an `.ics` file for a calendar. Each event is two hours from its start. Club nights are Wednesdays 7–9pm at Henllys Village Hall. The GB3YA net is Monday evening from 7pm.
+
+The same people approve or reject new members on **Review new members**, and can set another member's role. A person cannot change their own role or approval.
+
+Repeaters are still edited in the Supabase table editor. The database now allows committee and admin to write them; everyone else cannot.
 
 [Table editor](https://supabase.com/dashboard/project/kzzqrormwligrdbrxsrw/editor)
 
-The app picks the changes up the next time someone opens that screen. No new build is needed.
+The app picks repeater changes up the next time someone opens that screen. No new build is needed.
 
 **repeaters**
 
@@ -119,12 +131,14 @@ Do not put phone numbers or home addresses in any column. The app also strips ph
 
 **members**
 
-A signed-in person can only create and edit their own row, and the database forces the callsign to uppercase. The role starts as `member`. A committee member can change `role` in the table editor to `controller` or `committee`. Any signed-in member can open tonight's net and check people in, which is what the database allows.
+A signed-in person can create their own row and later edit their callsign and name. The database forces a UK amateur callsign, in capitals, and stores the row as `pending` with role `member`. They cannot approve themselves or change their role. Committee or admin can set `status` to `approved` or `rejected`, and can set another person's role to `member`, `controller`, `committee`, or `admin`. Only an approved member can go on the air, open a net, check a station in, or add a coverage report.
 
 ## What the screens do
 
 - **On air.** A live list of `on_air` rows that have not expired, updated over Supabase Realtime. “I'm on GB3YA” and “145.500 simplex” are one tap. “Other frequency” takes a typed frequency and a short note. The row lasts one hour, which the database sets. Clear removes your own rows.
 - **Net.** Opens tonight's `nets` row on GB3YA, then checks callsigns in with an optional signal report such as 5/9. Regulars are the callsigns from this year's nets, most frequent first. The list updates live. Attendance counts distinct nets this year, and the most regular member gets a badge once they have been along at least three times.
-- **Repeaters and Club.** Read-only lists from `repeaters` and `events`.
+- **Map.** Coverage reports and the published sites for GB3YA, GB3AA, GB3BC, GB3MG, and GB7GE, on OpenStreetMap. An approved member adds a report from the phone's location or by tapping the map, picks a repeater, and gives a signal report. The stored spot is rounded to three decimal places, about 100 metres. Filter the dots by repeater.
+- **Repeaters.** Read-only list from `repeaters`.
+- **Club.** The diary: upcoming events first, earlier ones collapsed, and an Add to calendar download on each. Committee members can add, edit, and delete events, and open the new-members screen.
 
 Going on the air again replaces your previous row. A callsign can only be checked in once per net. Callsigns are stored in capitals even if someone types them in lower case.

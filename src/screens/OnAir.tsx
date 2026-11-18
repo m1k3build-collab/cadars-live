@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { ApprovalNote } from '../components/ApprovalNote.tsx'
 import { useDirectory, useOnAir, useRepeaters, useScrollLock } from '../hooks.ts'
 import { demoClearOnAir, demoGoOnAir } from '../lib/demo.ts'
 import {
@@ -19,18 +20,7 @@ import type { OnAirRow } from '../types.ts'
 const SIMPLEX = '145.500'
 
 export function OnAirScreen() {
-  const {
-    demo,
-    now,
-    operator,
-    session,
-    authReady,
-    member,
-    memberLoading,
-    toast,
-    openAuth,
-    openProfile,
-  } = useApp()
+  const { demo, now, operator, member, toast, requireWriter } = useApp()
   const { rows, error, loading, status, reload } = useOnAir()
   const { rows: repeaters } = useRepeaters()
   const names = useDirectory()
@@ -44,6 +34,7 @@ export function OnAirScreen() {
   const presence = demo ? 'Sample' : status === 'SUBSCRIBED' ? 'Live' : error ? 'Offline' : 'Connecting'
 
   async function transmit(frequency: string, note: string | null) {
+    if (!requireWriter('go on the air')) return
     if (demo) {
       demoGoOnAir(frequency, note)
       pulse()
@@ -51,18 +42,7 @@ export function OnAirScreen() {
       setCustomOpen(false)
       return
     }
-    if (!authReady || memberLoading) {
-      toast('One moment while we check your sign-in.')
-      return
-    }
-    if (!session) {
-      openAuth('Sign in to put yourself on the air. We will email you a code.')
-      return
-    }
-    if (!member) {
-      openProfile()
-      return
-    }
+    if (!member) return
     setBusy(frequency)
     try {
       await goOnAir(member.callsign, frequency, note)
@@ -78,6 +58,7 @@ export function OnAirScreen() {
   }
 
   async function clear() {
+    if (!requireWriter('clear your status')) return
     if (demo) {
       demoClearOnAir()
       pulse()
@@ -111,6 +92,7 @@ export function OnAirScreen() {
           {presence}
         </span>
       </header>
+      <ApprovalNote />
 
       {mine ? <YouCard row={mine} now={now} busy={busy === 'clear'} onClear={() => void clear()} /> : null}
 

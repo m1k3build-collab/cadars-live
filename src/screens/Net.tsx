@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { ApprovalNote } from '../components/ApprovalNote.tsx'
 import { useDirectory, useNets } from '../hooks.ts'
 import { demoCheckIn, demoCloseTonight, demoStartNet } from '../lib/demo.ts'
 import {
@@ -20,7 +21,7 @@ import { useApp } from '../state.tsx'
 const REPORTS = ['5/9', '5/8', '5/7', '5/5', '4/3']
 
 export function NetScreen() {
-  const { demo, now, session, member, authReady, memberLoading, toast, openAuth, openProfile } = useApp()
+  const { demo, now, member, toast, requireWriter } = useApp()
   const { nets, error, loading, status, reload } = useNets()
   const names = useDirectory()
   const [typed, setTyped] = useState('')
@@ -48,32 +49,15 @@ export function NetScreen() {
     return () => window.clearTimeout(timer)
   }, [flash])
 
-  function ensureReady(): boolean {
-    if (demo) return true
-    if (!authReady || memberLoading) {
-      toast('One moment while we check your sign-in.')
-      return false
-    }
-    if (!session) {
-      openAuth('Sign in to run the net. We will email you a code.')
-      return false
-    }
-    if (!member) {
-      openProfile()
-      return false
-    }
-    return true
-  }
-
   async function openTonight() {
-    if (!ensureReady()) return
+    if (!requireWriter('run the net')) return
     setBusy(true)
     try {
       if (demo) demoStartNet(today)
       else if (member) {
         await startNet(today, member.callsign)
         await reload()
-      }
+      } else return
       pulse()
       toast("Tonight's net is open.")
     } catch (err) {
@@ -97,7 +81,7 @@ export function NetScreen() {
       toast(`${parsed.callsign} is already on the list.`)
       return
     }
-    if (!ensureReady()) return
+    if (!requireWriter('check a station in')) return
     setBusy(true)
     try {
       if (demo) demoCheckIn(tonight.id, parsed.callsign, report)
@@ -139,6 +123,7 @@ export function NetScreen() {
           {presence}
         </span>
       </header>
+      <ApprovalNote />
 
       {loading ? (
         <div className="stack" aria-hidden="true">

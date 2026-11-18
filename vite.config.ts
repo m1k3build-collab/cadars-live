@@ -20,7 +20,7 @@ export default defineConfig({
         name: 'CADARS Live',
         short_name: 'CADARS Live',
         description:
-          'Who is on the air, and the Monday GB3YA net, for Cwmbran & District Amateur Radio Society.',
+          'Who is on the air, the Monday GB3YA net, repeater coverage, and the club diary for Cwmbran & District Amateur Radio Society.',
         lang: 'en-GB',
         dir: 'ltr',
         start_url: pagesBase,
@@ -51,6 +51,12 @@ export default defineConfig({
             name: 'Monday net',
             short_name: 'Net',
             url: `${pagesBase}#net`,
+            icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Coverage map',
+            short_name: 'Map',
+            url: `${pagesBase}#map`,
             icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }],
           },
         ],
