@@ -1,0 +1,4 @@
+/cadars-live/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+/cadars-live/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate

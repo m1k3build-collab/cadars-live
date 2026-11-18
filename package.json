@@ -1,0 +1,37 @@
+{
+  "name": "cadars-live",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 43123 --strictPort",
+    "build": "tsc -b && vite build && node scripts/copy-404.mjs",
+    "preview": "vite preview --host 0.0.0.0 --port 43123 --strictPort",
+    "lint": "oxlint",
+    "test": "node --experimental-strip-types --test src/lib/format.test.ts",
+    "icons": "node scripts/make-icons.mjs",
+    "check:live": "node scripts/live-check.mjs"
+  },
+  "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@supabase/supabase-js": "^2.119.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.90.0",
+    "playwright-core": "^1.65.1",
+    "sharp": "^0.35.5",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
