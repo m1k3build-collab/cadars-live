@@ -13,7 +13,7 @@ import { DEMO_OPERATOR, resetDemo } from './lib/demo.ts'
 import { fetchMember, saveMember } from './lib/live.ts'
 import { supabase } from './lib/supabase.ts'
 import type { Member, Tab } from './types.ts'
-import { errorCode, friendlyMessage } from './lib/format.ts'
+import { errorCode, friendlyMessage, isCommitteeRole } from './lib/format.ts'
 
 type Theme = 'light' | 'dark'
 type Operator = { callsign: string; displayName: string | null }
@@ -43,6 +43,9 @@ type AppContextValue = {
   closeProfile: () => void
   saveProfile: (callsign: string, displayName: string) => Promise<void>
   signOut: () => Promise<void>
+  committee: boolean
+  requireWriter: (purpose: string) => boolean
+  requireCommittee: (purpose: string) => boolean
   installPrompt: InstallPrompt | null
   promptInstall: () => Promise<void>
 }
@@ -51,7 +54,16 @@ const AppContext = createContext<AppContextValue | null>(null)
 
 function readTab(): Tab {
   const hash = window.location.hash.replace('#', '')
-  if (hash === 'net' || hash === 'repeaters' || hash === 'club' || hash === 'air') return hash
+  if (
+    hash === 'net' ||
+    hash === 'map' ||
+    hash === 'repeaters' ||
+    hash === 'club' ||
+    hash === 'members' ||
+    hash === 'air'
+  ) {
+    return hash
+  }
   return 'air'
 }
 
@@ -64,8 +76,10 @@ function readTheme(): Theme {
 const TITLES: Record<Tab, string> = {
   air: "Who's on the air",
   net: 'Monday net',
+  map: 'Coverage map',
   repeaters: 'Repeaters',
-  club: 'Club night',
+  club: 'Club diary',
+  members: 'New members',
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -110,7 +124,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [tab])
 
   useEffect(() => {
-    const onHash = () => setTabState(readTab())
+    const onHash = () => {
+      setTabState(readTab())
+      document.getElementById('content')?.scrollTo(0, 0)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -195,6 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const hash = `#${next}`
     if (window.location.hash !== hash) window.location.hash = next
     setTabState(next)
+    document.getElementById('content')?.scrollTo(0, 0)
   }, [])
 
   const toggleTheme = useCallback(() => {
@@ -239,7 +257,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const saved = await saveMember(session.user.id, callsign, displayName, Boolean(member))
         setMember(saved)
         setProfileOpen(false)
-        toast('Your callsign is saved.')
+        if (saved.status === 'approved') toast('Your callsign is saved.')
+        else if (saved.status === 'rejected') toast('The committee has not approved this callsign.')
+        else toast('Saved. A committee member will approve you before you can post.')
       } catch (error) {
         if (errorCode(error) === '23505' && /user_id/i.test(JSON.stringify(error))) {
           const again = await fetchMember(session.user.id)
@@ -264,11 +284,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setInstallPrompt(null)
   }, [installPrompt])
 
+  const requireWriter = useCallback(
+    (purpose: string) => {
+      if (demo) return true
+      if (!authReady || memberLoading) {
+        toast('One moment while we check your sign-in.')
+        return false
+      }
+      if (!session) {
+        openAuth(`Sign in to ${purpose}. We will email you a code.`)
+        return false
+      }
+      if (!member) {
+        openProfile()
+        return false
+      }
+      if (member.status !== 'approved') {
+        toast(
+          member.status === 'rejected'
+            ? 'The committee has not approved this callsign, so you cannot post yet.'
+            : 'Waiting for a committee member to approve you.',
+        )
+        return false
+      }
+      return true
+    },
+    [authReady, demo, member, memberLoading, openAuth, openProfile, session, toast],
+  )
+
+  const requireCommittee = useCallback(
+    (purpose: string) => {
+      if (demo) return true
+      if (!requireWriter(purpose)) return false
+      if (!member || !isCommitteeRole(member.role)) {
+        toast('Only a committee member can do that.')
+        return false
+      }
+      return true
+    },
+    [demo, member, requireWriter, toast],
+  )
+
   const operator = demo
     ? DEMO_OPERATOR
     : member
       ? { callsign: member.callsign, displayName: member.display_name }
       : null
+  const committee = demo || (member?.status === 'approved' && isCommitteeRole(member.role))
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -295,6 +357,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       closeProfile,
       saveProfile,
       signOut,
+      committee,
+      requireWriter,
+      requireCommittee,
       installPrompt,
       promptInstall,
     }),
@@ -322,6 +387,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       closeProfile,
       saveProfile,
       signOut,
+      committee,
+      requireWriter,
+      requireCommittee,
       installPrompt,
       promptInstall,
     ],

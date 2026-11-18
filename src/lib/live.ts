@@ -1,5 +1,17 @@
-import type { Checkin, ClubEvent, DirectoryEntry, Member, Net, NetBundle, OnAirRow, Repeater } from '../types.ts'
-import { prepareCallsign } from './format.ts'
+import type {
+  Checkin,
+  ClubEvent,
+  CoverageReport,
+  DirectoryEntry,
+  Member,
+  MemberRole,
+  MemberStatus,
+  Net,
+  NetBundle,
+  OnAirRow,
+  Repeater,
+} from '../types.ts'
+import { prepareCallsign, prepareUkCallsign, publicText, roundCoord } from './format.ts'
 import { supabase } from './supabase.ts'
 
 type DbError = { message: string; code?: string; details?: string | null }
@@ -100,19 +112,26 @@ export async function fetchEvents(): Promise<ClubEvent[]> {
 }
 
 export async function fetchDirectory(): Promise<DirectoryEntry[]> {
-  const { data, error } = await supabase.from('members').select('callsign, display_name, role')
+  const { data, error } = await supabase
+    .from('members')
+    .select('callsign, display_name, role')
+    .eq('status', 'approved')
   fail(error)
   return (data ?? []) as DirectoryEntry[]
 }
 
+const MEMBER_COLUMNS = 'id, user_id, callsign, display_name, role, status, created_at'
+
 export async function fetchMember(userId: string): Promise<Member | null> {
-  const { data, error } = await supabase
-    .from('members')
-    .select('id, user_id, callsign, display_name, role, created_at')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const { data, error } = await supabase.from('members').select(MEMBER_COLUMNS).eq('user_id', userId).maybeSingle()
   fail(error)
   return (data as Member | null) ?? null
+}
+
+export async function fetchMembers(): Promise<Member[]> {
+  const { data, error } = await supabase.from('members').select(MEMBER_COLUMNS).order('created_at', { ascending: true })
+  fail(error)
+  return (data ?? []) as Member[]
 }
 
 export async function saveMember(
@@ -121,7 +140,7 @@ export async function saveMember(
   displayName: string,
   existing: boolean,
 ): Promise<Member> {
-  const parsed = prepareCallsign(callsign)
+  const parsed = prepareUkCallsign(callsign)
   if (!parsed.ok) throw new Error(parsed.message)
   const payload = { callsign: parsed.callsign, display_name: displayName.trim() }
   if (existing) {
@@ -129,18 +148,92 @@ export async function saveMember(
       .from('members')
       .update(payload)
       .eq('user_id', userId)
-      .select('id, user_id, callsign, display_name, role, created_at')
+      .select(MEMBER_COLUMNS)
       .single()
     fail(error)
     return data as Member
   }
   const { data, error } = await supabase
     .from('members')
-    .insert({ ...payload, user_id: userId })
-    .select('id, user_id, callsign, display_name, role, created_at')
+    .insert({ ...payload, user_id: userId, role: 'member', status: 'pending' })
+    .select(MEMBER_COLUMNS)
     .single()
   fail(error)
   return data as Member
+}
+
+export async function setMemberStatus(id: string, status: Extract<MemberStatus, 'approved' | 'rejected'>): Promise<void> {
+  const { data, error } = await supabase.from('members').update({ status }).eq('id', id).select('id')
+  fail(error)
+  if (!data?.length) throw { code: '42501', message: 'permission denied' }
+}
+
+export async function setMemberRole(id: string, role: MemberRole): Promise<void> {
+  const { data, error } = await supabase.from('members').update({ role }).eq('id', id).select('id')
+  fail(error)
+  if (!data?.length) throw { code: '42501', message: 'permission denied' }
+}
+
+export async function fetchCoverage(): Promise<CoverageReport[]> {
+  const { data, error } = await supabase
+    .from('coverage_reports')
+    .select('id, callsign, lat, lng, signal_report, repeater, created_at')
+    .order('created_at', { ascending: false })
+  fail(error)
+  return (data ?? []) as CoverageReport[]
+}
+
+export async function addCoverageReport(input: {
+  callsign: string
+  lat: number
+  lng: number
+  repeater: string
+  signal: string
+}): Promise<void> {
+  const parsed = prepareUkCallsign(input.callsign)
+  if (!parsed.ok) throw new Error(parsed.message)
+  const repeaterName = input.repeater.trim().toUpperCase()
+  if (!/^[A-Z0-9]{3,8}$/.test(repeaterName)) throw new Error('Choose a repeater.')
+  const signal = publicText(input.signal)?.slice(0, 40) ?? null
+  if (!signal) throw new Error('Choose a signal report.')
+  const { error } = await supabase.from('coverage_reports').insert({
+    callsign: parsed.callsign,
+    lat: roundCoord(input.lat),
+    lng: roundCoord(input.lng),
+    repeater: repeaterName,
+    signal_report: signal,
+  })
+  fail(error)
+}
+
+const EVENT_COLUMNS = 'id, title, date, location, description, created_at'
+
+export async function saveEvent(input: {
+  id?: string
+  title: string
+  date: string
+  location: string | null
+  description: string | null
+}): Promise<void> {
+  const payload = {
+    title: input.title,
+    date: input.date,
+    location: input.location,
+    description: input.description,
+  }
+  if (input.id) {
+    const { error } = await supabase.from('events').update(payload).eq('id', input.id).select(EVENT_COLUMNS).single()
+    fail(error)
+    return
+  }
+  const { error } = await supabase.from('events').insert(payload).select(EVENT_COLUMNS).single()
+  fail(error)
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  const { data, error } = await supabase.from('events').delete().eq('id', id).select('id')
+  fail(error)
+  if (!data?.length) throw { code: '42501', message: 'permission denied' }
 }
 
 export async function sendEmailCode(email: string): Promise<void> {

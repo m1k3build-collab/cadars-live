@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { demoBundles, getDemoState, subscribeDemo } from './lib/demo.ts'
 import { friendlyMessage, londonParts } from './lib/format.ts'
-import { fetchDirectory, fetchEvents, fetchOnAir, fetchRepeaters, fetchYearNets } from './lib/live.ts'
+import {
+  fetchCoverage,
+  fetchDirectory,
+  fetchEvents,
+  fetchMembers,
+  fetchOnAir,
+  fetchRepeaters,
+  fetchYearNets,
+} from './lib/live.ts'
 import { supabase } from './lib/supabase.ts'
 import { useApp } from './state.tsx'
-import type { ClubEvent, DirectoryEntry, NetBundle, OnAirRow, Repeater } from './types.ts'
+import type { ClubEvent, CoverageReport, DirectoryEntry, Member, NetBundle, OnAirRow, Repeater } from './types.ts'
 
 export function useScrollLock(locked: boolean): void {
   useEffect(() => {
@@ -151,6 +159,48 @@ export function useEvents() {
     void reload()
   }, [demo, reload])
   if (demo) return { rows: demoState.events, error: null, loading: false, reload }
+  return { rows, error, loading: rows === null && !error, reload }
+}
+
+export function useCoverage() {
+  const { demo } = useApp()
+  const demoState = useSyncExternalStore(subscribeDemo, getDemoState, getDemoState)
+  const [rows, setRows] = useState<CoverageReport[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const reload = useCallback(async () => {
+    try {
+      setRows(await fetchCoverage())
+      setError(null)
+    } catch (err) {
+      setError(friendlyMessage(err))
+    }
+  }, [])
+  useEffect(() => {
+    if (demo) return
+    void reload()
+  }, [demo, reload])
+  if (demo) return { rows: demoState.coverage, error: null, loading: false, reload }
+  return { rows, error, loading: rows === null && !error, reload }
+}
+
+export function useMembers() {
+  const { demo } = useApp()
+  const demoState = useSyncExternalStore(subscribeDemo, getDemoState, getDemoState)
+  const [rows, setRows] = useState<Member[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const reload = useCallback(async () => {
+    try {
+      setRows(await fetchMembers())
+      setError(null)
+    } catch (err) {
+      setError(friendlyMessage(err))
+    }
+  }, [])
+  useEffect(() => {
+    if (demo) return
+    void reload()
+  }, [demo, reload])
+  if (demo) return { rows: demoState.members, error: null, loading: false, reload }
   return { rows, error, loading: rows === null && !error, reload }
 }
 

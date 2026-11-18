@@ -1,5 +1,24 @@
-import type { Checkin, ClubEvent, DirectoryEntry, Net, NetBundle, OnAirRow, Repeater } from '../types.ts'
-import { londonParts, nextWednesdayEvening, prepareCallsign } from './format.ts'
+import type {
+  Checkin,
+  ClubEvent,
+  CoverageReport,
+  DirectoryEntry,
+  Member,
+  MemberRole,
+  MemberStatus,
+  Net,
+  NetBundle,
+  OnAirRow,
+  Repeater,
+} from '../types.ts'
+import {
+  lastWeekdayEvening,
+  londonParts,
+  nextMondayEvening,
+  nextWednesdayEvening,
+  prepareCallsign,
+  roundCoord,
+} from './format.ts'
 
 export const DEMO_OPERATOR = { callsign: 'MW0CAD', displayName: 'Demo guest' }
 
@@ -8,7 +27,7 @@ const PEOPLE: DirectoryEntry[] = [
   { callsign: 'MW6DEF', display_name: 'Dewi', role: 'member' },
   { callsign: '2E0XYZ', display_name: 'Sam', role: 'member' },
   { callsign: 'M7ABC', display_name: 'Alex', role: 'member' },
-  { callsign: DEMO_OPERATOR.callsign, display_name: DEMO_OPERATOR.displayName, role: 'member' },
+  { callsign: DEMO_OPERATOR.callsign, display_name: DEMO_OPERATOR.displayName, role: 'committee' },
 ]
 
 const PAST_NIGHTS: Record<string, number> = {
@@ -25,6 +44,8 @@ type DemoState = {
   checkins: Checkin[]
   repeaters: Repeater[]
   events: ClubEvent[]
+  coverage: CoverageReport[]
+  members: Member[]
   directory: DirectoryEntry[]
 }
 
@@ -159,18 +180,108 @@ export function createDemoState(now: number): DemoState {
     events: [
       {
         id: uid(),
+        title: 'GB3YA net',
+        date: nextMondayEvening(new Date(now)),
+        location: 'On GB3YA',
+        description: 'Monday evening net from 7pm.',
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: uid(),
         title: 'CADARS club night',
         date: nextWednesdayEvening(new Date(now)),
         location: 'Henllys Village Hall',
         description: 'Weekly club night, 7–9pm.',
         created_at: '2026-01-01T00:00:00.000Z',
       },
+      {
+        id: uid(),
+        title: 'GB3YA net',
+        date: lastWeekdayEvening(new Date(now), 1),
+        location: 'On GB3YA',
+        description: 'Monday evening net from 7pm.',
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: uid(),
+        title: 'CADARS club night',
+        date: lastWeekdayEvening(new Date(now), 3),
+        location: 'Henllys Village Hall',
+        description: 'Weekly club night, 7–9pm.',
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+    coverage: [
+      report(now, 'GW4XYZ', 51.641, -3.045, 'Full quieting', 'GB3YA', 50),
+      report(now, 'MW6DEF', 51.662, -3.016, '5/9', 'GB3YA', 80),
+      report(now, '2E0XYZ', 51.61, -2.959, '5/7', 'GB3YA', 30),
+      report(now, 'M7ABC', 51.588, -2.997, '4/3', 'GB3YA', 20),
+      report(now, 'MW0CAD', 51.648, -3.05, '5/9', 'GB3YA', 15),
+      report(now, 'GW4XYZ', 51.611, -3.099, '5/5', 'GB3BC', 40),
+      report(now, 'MW6DEF', 51.701, -3.044, 'Weak', 'GB3YA', 10),
+      report(now, '2E0XYZ', 51.579, -2.831, 'Weak', 'GB3AA', 25),
+    ],
+    members: [
+      ...PEOPLE.map((person, index) =>
+        demoMember(now, person.callsign, person.display_name, person.role, 'approved', 1000 + index),
+      ),
+      demoMember(now, 'M7NEW', 'Pat', 'member', 'pending', 40),
+      demoMember(now, '2W0QRS', 'Chris', 'member', 'pending', 25),
+      demoMember(now, 'MW6OLD', 'Jo', 'member', 'rejected', 90),
     ],
   }
 }
 
+function report(
+  now: number,
+  callsign: string,
+  lat: number,
+  lng: number,
+  signal: string,
+  repeaterName: string,
+  minutesAgo: number,
+): CoverageReport {
+  return {
+    id: uid(),
+    callsign,
+    lat,
+    lng,
+    signal_report: signal,
+    repeater: repeaterName,
+    created_at: new Date(now - minutesAgo * 60 * 1000).toISOString(),
+  }
+}
+
+function demoMember(
+  now: number,
+  callsign: string,
+  displayName: string | null,
+  role: MemberRole,
+  status: MemberStatus,
+  minutesAgo: number,
+): Member {
+  return {
+    id: uid(),
+    user_id: null,
+    callsign,
+    display_name: displayName,
+    role,
+    status,
+    created_at: new Date(now - minutesAgo * 60 * 1000).toISOString(),
+  }
+}
+
 function commit(next: DemoState): void {
-  state = next
+  state = {
+    ...next,
+    directory: next.members
+      .filter((member) => member.status === 'approved')
+      .map((member) => ({
+        callsign: member.callsign,
+        display_name: member.display_name,
+        role: member.role,
+      })),
+  }
   listeners.forEach((listener) => listener())
 }
 
@@ -254,4 +365,70 @@ export function demoCheckIn(netId: string, callsign: string, signal: string | nu
     created_at: new Date().toISOString(),
   }
   commit({ ...state, checkins: [...state.checkins, row] })
+}
+
+export function demoAddCoverage(lat: number, lng: number, repeaterName: string, signal: string): void {
+  const row: CoverageReport = {
+    id: uid(),
+    callsign: DEMO_OPERATOR.callsign,
+    lat: roundCoord(lat),
+    lng: roundCoord(lng),
+    signal_report: signal.trim(),
+    repeater: repeaterName.trim().toUpperCase(),
+    created_at: new Date().toISOString(),
+  }
+  commit({ ...state, coverage: [row, ...state.coverage] })
+}
+
+export function demoSaveEvent(input: {
+  id?: string
+  title: string
+  date: string
+  location: string | null
+  description: string | null
+}): void {
+  if (input.id) {
+    commit({
+      ...state,
+      events: state.events.map((event) =>
+        event.id === input.id
+          ? {
+              ...event,
+              title: input.title,
+              date: input.date,
+              location: input.location,
+              description: input.description,
+            }
+          : event,
+      ),
+    })
+    return
+  }
+  const row: ClubEvent = {
+    id: uid(),
+    title: input.title,
+    date: input.date,
+    location: input.location,
+    description: input.description,
+    created_at: new Date().toISOString(),
+  }
+  commit({ ...state, events: [...state.events, row] })
+}
+
+export function demoDeleteEvent(id: string): void {
+  commit({ ...state, events: state.events.filter((event) => event.id !== id) })
+}
+
+export function demoSetMemberStatus(id: string, status: MemberStatus): void {
+  commit({
+    ...state,
+    members: state.members.map((member) => (member.id === id ? { ...member, status } : member)),
+  })
+}
+
+export function demoSetMemberRole(id: string, role: MemberRole): void {
+  commit({
+    ...state,
+    members: state.members.map((member) => (member.id === id ? { ...member, role } : member)),
+  })
 }

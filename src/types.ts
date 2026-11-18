@@ -1,4 +1,6 @@
-export type MemberRole = 'member' | 'controller' | 'committee'
+export type MemberRole = 'member' | 'controller' | 'committee' | 'admin'
+
+export type MemberStatus = 'pending' | 'approved' | 'rejected'
 
 export type Member = {
   id: string
@@ -6,6 +8,7 @@ export type Member = {
   callsign: string
   display_name: string | null
   role: MemberRole
+  status: MemberStatus
   created_at: string
 }
 
@@ -57,10 +60,20 @@ export type ClubEvent = {
   created_at: string
 }
 
+export type CoverageReport = {
+  id: string
+  callsign: string
+  lat: number
+  lng: number
+  signal_report: string | null
+  repeater: string
+  created_at: string
+}
+
 export type DirectoryEntry = {
   callsign: string
   display_name: string | null
   role: MemberRole
 }
 
-export type Tab = 'air' | 'net' | 'repeaters' | 'club'
+export type Tab = 'air' | 'net' | 'map' | 'repeaters' | 'club' | 'members'
